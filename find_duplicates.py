@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import argparse
 import os
 
 def try_get_title( path: os.PathLike, encoding: str ) -> str | None:
@@ -17,9 +18,13 @@ def get_title( path: os.PathLike ) -> str | None:
 
 if __name__ == "__main__":
 
+  parser = argparse.ArgumentParser( description="Find duplicate song titles in .sng files." )
+  parser.add_argument( "directory", nargs="?", default=".", help="Directory to scan for .sng files (default: current directory)" )
+  arguments = parser.parse_args()
+
   titles: dict[ str, list[ str ] ] = {}
 
-  for path in os.scandir():
+  for path in os.scandir( arguments.directory ):
     if path.is_file() and path.name.endswith( ".sng" ):
       if title := get_title( path ):
         titles.setdefault( title.casefold(), [] ).append( path.name )
