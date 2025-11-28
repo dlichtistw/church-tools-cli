@@ -279,6 +279,31 @@ class ChurchToolsSession( requests.Session ):
       return
     else:
       raise ConnectionError( f"Failed to set arrangement { arrangement_id } as default for song { song_id }: { result.status_code } - { result.text }" )
+    
+  def delete_imported_songs( self ):
+    if self.source_id is None:
+      raise ValueError( "source_id must be set to delete imported songs." )
+
+    for song in collect_pages( self, requests.Request( "GET", self.api_url + "/songs", params={ "sourceId": self.source_id } ) ):
+
+      delete_song = True
+
+      for arrangement in collect_pages( self, requests.Request( "GET", f"{ self.api_url }/songs/{ song[ "id" ] }/arrangements" ) ):
+        if arrangement.get( "sourceId" ) == self.source_id:
+          print( f"Deleting arrangement { arrangement[ "id" ] } of song { song[ "id" ] }." )
+          if result := self.delete( f"{ self.api_url }/songs/{ song[ "id" ] }/arrangements/{ arrangement[ "id" ] }" ):
+            pass
+          else:
+            raise ConnectionError( f"Failed to delete arrangement { arrangement[ "id" ] } of song { song[ "id" ] }: { result.status_code } - { result.text }" )
+        else:
+          delete_song = False
+        
+      if delete_song:
+        print( f"Deleting song { song[ "id" ] } - { song[ "name" ] }." )
+        if result := self.delete( f"{ self.api_url }/songs/{ song[ "id" ] }" ):
+          pass
+        else:
+          raise ConnectionError( f"Failed to delete song { song[ "id" ] }: { result.status_code } - { result.text }" )
 
 if __name__ == "__main__":
 
@@ -298,17 +323,22 @@ if __name__ == "__main__":
   parser = argparse.ArgumentParser( description="Manage a ChurchTools song database." )
   parser.add_argument( "-u", "--api-url", type=str, help="ChurchTools API URL", required=( "api_url" not in defaults ), metavar="URL" )
   parser.add_argument( "-t", "--api-token", type=str, help="ChurchTools API token", required=( "api_token" not in defaults ), metavar="TOKEN" )
+  parser.set_defaults( **defaults )
 
   sub_parsers = parser.add_subparsers( dest="command" )
 
   import_parser = sub_parsers.add_parser( "import", help="Import .sng files into ChurchTools." )
-  import_parser.add_argument( "--source-id", type=int, help="Source ID for imported arrangements", metavar="ID" )
+  import_parser.add_argument( "--source_id", type=int, help="Source ID for imported arrangements", metavar="ID" )
   import_parser.add_argument( "--attachment_mode", type=AttachmentMode, choices=list( AttachmentMode ), default="skip" )
-  import_parser.add_argument( "source-directory", type=str, default=".", nargs="?" )
+  import_parser.add_argument( "source_directory", type=str, default=".", nargs="?" )
+  import_parser.set_defaults( **defaults )
+
+  delete_parser = sub_parsers.add_parser( "delete", help="Delete all imported songs from ChurchTools." )
+  delete_parser.add_argument( "--source_id", type=int, help="Source ID of imported arrangements.", required=( "source_id" not in defaults ), metavar="ID" )
+  delete_parser.set_defaults( **defaults )
 
   test_parser = sub_parsers.add_parser( "test", help="Test the ChurchTools connection." )
 
-  parser.set_defaults( **defaults )
 
   arguments = parser.parse_args()
 
@@ -317,15 +347,20 @@ if __name__ == "__main__":
     case "import":
       with ChurchToolsSession( arguments.api_url, arguments.api_token ) as session:
 
-        session.source_id = arguments.get( "source-id" )
+        session.source_id = arguments.source_id
 
         for file in os.scandir( arguments.source_directory ):
           if file.is_file() and file.name.endswith( ".sng" ):
             if song := read_song( file.path ):
               if ct_song := session.import_song( song ):
                 if ct_arrangement := session.import_arrangement( song, ct_song ):
-                  session.import_attachment( song, ct_arrangement )
+                  session.import_attachment( song, ct_arrangement, mode=arguments.attachment_mode )
                   session.set_default_arrangement( ct_song[ "id" ], ct_arrangement[ "id" ] )
+
+    case "delete":
+      with ChurchToolsSession( arguments.api_url, arguments.api_token ) as session:
+        session.source_id = arguments.source_id
+        session.delete_imported_songs()
     
     case "test":
       with ChurchToolsSession( arguments.api_url, arguments.api_token ) as session:
