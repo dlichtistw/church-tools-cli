@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import datetime
-import requests
+import requests, requests.adapters
 import os, sys
 import enum
 
@@ -108,6 +108,9 @@ class ChurchToolsSession( requests.Session ):
     super().__init__()
 
     self.api_url = api_url
+
+    retries = requests.adapters.Retry( total=5, backoff_factor=.1 )
+    self.mount( self.api_url, requests.adapters.HTTPAdapter( max_retries=retries ) )
 
     self.headers.update( { "Authorization": f"Login { api_token }" } )
     if result := self.get( f"{ self.api_url }/whoami" ):
