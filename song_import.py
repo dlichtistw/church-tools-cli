@@ -59,6 +59,37 @@ def read_song( path: str ) -> Song | None:
   except UnicodeDecodeError:
     return try_read_song( path, "latin1" )
 
+def validate_string( value: str | None, min_length: int, max_length: int ) -> str | None:
+  if not value:
+    if min_length > 0:
+      return f"Invalid string."
+  elif len( value ) < min_length:
+    return f"'{ value }' is shorter than { min_length } characters."
+  elif len( value ) > max_length:
+    return f"'{ value }' is longer than { max_length } characters."
+
+def check_song( song: Song ) -> bool:
+  result = True
+
+  if error := validate_string( song.title, 2, 200 ):
+    print( f"Song '{ song.file_name }' has an invalid title: { error }" )
+    result = False
+
+  if error := validate_string( song.author, 0, 300 ):
+    print( f"Song '{ song.file_name }' has an invalid author: { error }" )
+    result = False
+  
+  if error := validate_string( song.copyright, 0, 400 ):
+    print( f"Song '{ song.file_name }' has an invalid copyright: { error }" )
+    result = False
+
+  if song.ccli:
+    if error := validate_string( str( song.ccli ), 0, 50 ):
+      print( f"Song '{ song.file_name }' has an invalid CCLI number: { error }" )
+      result = False
+  
+  return result
+
 def has_more_pages( result: dict ) -> bool:
   if pagination := dict_path( result, "meta", "pagination" ):
     return pagination.get( "current", 0 ) < pagination.get( "lastPage", 0 )
@@ -176,7 +207,7 @@ class ChurchToolsSession( requests.Session ):
         update[ "categoryId" ] = existing[ "category" ][ "id" ]
       
         if song.ccli:
-          update[ "ccli" ] = song.ccli
+          update[ "ccli" ] = str( song.ccli )
     
         if song.author:
           update[ "author" ] = song.author
@@ -195,7 +226,7 @@ class ChurchToolsSession( requests.Session ):
         insert: dict = { "name": song.title, "categoryId": self.song_category }
 
         if song.ccli:
-          insert[ "ccli" ] = song.ccli
+          insert[ "ccli" ] = str( song.ccli )
         
         if song.author:
           insert[ "author" ] = song.author
@@ -342,6 +373,8 @@ if __name__ == "__main__":
 
   test_parser = sub_parsers.add_parser( "test", help="Test the ChurchTools connection." )
 
+  check_parser = sub_parsers.add_parser( "check", help="Check .sng files for validity." )
+  check_parser.add_argument( "source_directory", type=str, default=".", nargs="?" )
 
   arguments = parser.parse_args()
 
@@ -372,3 +405,9 @@ if __name__ == "__main__":
           print( f"Connected to ChurchTools { info[ "version" ] } of '{ info[ "siteName" ] }'." )
         else:
           raise ConnectionError( f"Failed to get ChurchTools info: { result.status_code } - { result.text }" )
+        
+    case "check":
+      for file in os.scandir( arguments.source_directory ):
+        if file.is_file() and file.name.endswith( ".sng" ):
+          if song := read_song( file.path ):
+            check_song( song )
