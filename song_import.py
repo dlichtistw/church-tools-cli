@@ -198,24 +198,34 @@ class ChurchToolsSession( requests.Session ):
 
     match self.match_song( song, songs ):
       case dict() as existing:
-        print( f"Updating existing song: { existing[ "id" ] } - { existing[ "name" ] }" )
 
         update = { k: v for k, v in existing.items() if k in [ "name", "author", "ccli", "copyright" ] }
         update[ "categoryId" ] = existing[ "category" ][ "id" ]
       
-        if song.ccli:
-          update[ "ccli" ] = song.ccli
-    
-        if song.author:
-          update[ "author" ] = song.author
+        needs_update = False
 
-        if song.copyright:
+        if song.ccli and song.ccli != update.get( "ccli" ):
+          update[ "ccli" ] = song.ccli
+          needs_update = True
+    
+        if song.author and song.author != update.get( "author" ):
+          update[ "author" ] = song.author
+          needs_update = True
+
+        if song.copyright and song.copyright != update.get( "copyright" ):
           update[ "copyright" ] = song.copyright
+          needs_update = True
         
-        if result := self.put( f"{ self.api_url }/songs/{ existing[ "id" ] }", json=update ):
-          return existing
+        if needs_update:
+          print( f"Updating existing song: { existing[ "id" ] } - { existing[ "name" ] }" )
+          if result := self.put( f"{ self.api_url }/songs/{ existing[ "id" ] }", json=update ):
+            pass
+          else:
+            raise ConnectionError( f"Failed to update song { existing[ "id" ] }: { result.status_code } - { result.text }" )
         else:
-          raise ConnectionError( f"Failed to update song { existing[ "id" ] }: { result.status_code } - { result.text }" )
+          print( f"Keep existing song: { existing[ "id" ] } - { existing[ "name" ] }" )
+          
+        return existing
     
       case None:
         print( f"Creating new song: { song.title }" )
@@ -243,21 +253,30 @@ class ChurchToolsSession( requests.Session ):
 
     match self.match_arrangement( song, ct_song.get( "arrangements", [] ) ):
       case dict() as existing:
-        print( f"Updating existing arrangement { existing[ "id" ] } for song id { ct_song[ "id" ] }." )
 
         update = { k: v for k, v in existing.items() if k in [ "beat", "duration", "key", "name", "sourceId", "tempo" ] }
         update[ "description" ] = f"Updated from '{ os.path.basename( song.file_name ) }' on { datetime.date.today().isoformat() }."
 
-        if song.key:
+        needs_update = False
+
+        if song.key and song.key != update.get( "key" ):
           update[ "key" ] = song.key
+          needs_update = True
 
-        if self.source_id and "sourceId" not in update:
+        if self.source_id and self.source_id != update.get( "sourceId" ):
           update[ "sourceId" ] = self.source_id
+          needs_update = True
 
-        if result := self.put( f"{ self.api_url }/songs/{ ct_song[ "id" ] }/arrangements/{ existing[ "id" ] }", json=update ):
-          return existing
+        if needs_update:
+          print( f"Updating existing arrangement { existing[ "id" ] } for song id { ct_song[ "id" ] }." )
+          if result := self.put( f"{ self.api_url }/songs/{ ct_song[ "id" ] }/arrangements/{ existing[ "id" ] }", json=update ):
+            pass
+          else:
+            raise ConnectionError( f"Failed to update arrangement { existing[ "id" ] } of song { ct_song[ "id" ] }: { result.status_code } - { result.text }" )
         else:
-          raise ConnectionError( f"Failed to update arrangement { existing[ "id" ] } of song { ct_song[ "id" ] }: { result.status_code } - { result.text }" )
+          print( f"Keeping existing arrangement { existing[ "id" ] } for song id { ct_song[ "id" ] }." )
+      
+        return existing
       
       case None:
         print( f"Creating new arrangement for song id { ct_song[ "id" ] }." )
