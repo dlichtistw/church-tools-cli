@@ -55,7 +55,7 @@ def try_read_song( path: str, encoding: str ) -> Song | None:
 
 def read_song( path: str ) -> Song | None:
   try:
-    return try_read_song( path, "utf8" )
+    return try_read_song( path, "utf_8_sig" )
   except UnicodeDecodeError:
     return try_read_song( path, "latin1" )
 
