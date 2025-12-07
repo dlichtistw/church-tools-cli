@@ -11,7 +11,7 @@ class Song:
   key: str | None = None
   author: str | None = None
   copyright: str | None = None
-  ccli: int | None = None
+  ccli: str | None = None
   categories: list[ str ] = []
   file_name: str
 
@@ -43,10 +43,7 @@ def try_read_song( path: str, encoding: str ) -> Song | None:
         case [ "#(c)", value ]:
           song.copyright = value.strip()
         case [ "#CCLI", value ]:
-          try:
-            song.ccli = int( value.strip() )
-          except ValueError:
-            print( f"Invalid CCLI number: { value.strip() }", file=sys.stderr )
+          song.ccli = value.strip()
         case [ "#Categories", value ]:
           song.categories = [ category.strip() for category in value.split( "," ) ]
   
@@ -207,7 +204,7 @@ class ChurchToolsSession( requests.Session ):
         update[ "categoryId" ] = existing[ "category" ][ "id" ]
       
         if song.ccli:
-          update[ "ccli" ] = str( song.ccli )
+          update[ "ccli" ] = song.ccli
     
         if song.author:
           update[ "author" ] = song.author
@@ -226,7 +223,7 @@ class ChurchToolsSession( requests.Session ):
         insert: dict = { "name": song.title, "categoryId": self.song_category }
 
         if song.ccli:
-          insert[ "ccli" ] = str( song.ccli )
+          insert[ "ccli" ] = song.ccli
         
         if song.author:
           insert[ "author" ] = song.author
