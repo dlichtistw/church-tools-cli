@@ -140,7 +140,7 @@ class ChurchToolsSession( requests.Session ):
 
     self.api_url = api_url
 
-    retries = requests.adapters.Retry( total=5, backoff_factor=.1 )
+    retries = requests.adapters.Retry( total=5, backoff_factor=1, allowed_methods=None, status_forcelist={ 429, } )
     self.mount( self.api_url, requests.adapters.HTTPAdapter( max_retries=retries ) )
 
     self.headers.update( { "Authorization": f"Login { api_token }" } )
