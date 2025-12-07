@@ -364,7 +364,7 @@ if __name__ == "__main__":
   import_parser = sub_parsers.add_parser( "import", help="Import .sng files into ChurchTools." )
   import_parser.add_argument( "--source_id", type=int, help="Source ID for imported arrangements", metavar="ID" )
   import_parser.add_argument( "--attachment_mode", type=AttachmentMode, choices=list( AttachmentMode ), default="skip" )
-  import_parser.add_argument( "source_directory", type=str, default=".", nargs="?" )
+  import_parser.add_argument( "source", type=str, default=".", nargs="+" )
   import_parser.set_defaults( **defaults )
 
   delete_parser = sub_parsers.add_parser( "delete", help="Delete all imported songs from ChurchTools." )
@@ -385,13 +385,20 @@ if __name__ == "__main__":
 
         session.source_id = arguments.source_id
 
-        for file in os.scandir( arguments.source_directory ):
-          if file.is_file() and file.name.endswith( ".sng" ):
-            if song := read_song( file.path ):
-              if ct_song := session.import_song( song ):
-                if ct_arrangement := session.import_arrangement( song, ct_song ):
-                  session.import_attachment( song, ct_arrangement, mode=arguments.attachment_mode )
-                  session.set_default_arrangement( ct_song[ "id" ], ct_arrangement[ "id" ] )
+        def do_import( path ):
+          if song := read_song( path ):
+            if ct_song := session.import_song( song ):
+              if ct_arrangement := session.import_arrangement( song, ct_song ):
+                session.import_attachment( song, ct_arrangement, mode=arguments.attachment_mode )
+                session.set_default_arrangement( ct_song[ "id" ], ct_arrangement[ "id" ] )
+
+        for source in arguments.source:
+          if os.path.isdir( source ):
+            for file in os.scandir( source ):
+              if file.is_file() and file.name.endswith( ".sng" ):
+                do_import( file.path )
+          else:
+            do_import( source )
 
     case "delete":
       with ChurchToolsSession( arguments.api_url, arguments.api_token ) as session:
