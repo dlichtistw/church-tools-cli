@@ -1,60 +1,12 @@
 #!/usr/bin/env python3
 
 import datetime
-import requests, requests.adapters
-import os, sys
+import requests
+import os
 import enum
 
-class Song:
-
-  title: str | None = None
-  key: str | None = None
-  author: str | None = None
-  copyright: str | None = None
-  ccli: str | None = None
-  categories: list[ str ] = []
-  file_name: str
-
-  def __init__( self, file_name: str ):
-    self.file_name = file_name
-
-def dict_path( data: dict, *keys: str, default=None ):
-  for key in keys:
-    if key in data:
-      data = data[ key ]
-    else:
-      return default
-  return data
-
-def try_read_song( path: str, encoding: str ) -> Song | None:
-
-  with open( path, "r", encoding=encoding ) as file:
-
-    song = Song( path )
-
-    for line in file:
-      match line.split( "=", 1 ):
-        case [ "#Title", value ]:
-          song.title = value.strip()
-        case [ "#Key", value ]:
-          song.key = value.strip()
-        case [ "#Author", value ]:
-          song.author = value.strip()
-        case [ "#(c)", value ]:
-          song.copyright = value.strip()
-        case [ "#CCLI", value ]:
-          song.ccli = value.strip()
-        case [ "#Categories", value ]:
-          song.categories = [ category.strip() for category in value.split( "," ) ]
-  
-    if song.title:
-      return song
-
-def read_song( path: str ) -> Song | None:
-  try:
-    return try_read_song( path, "utf_8_sig" )
-  except UnicodeDecodeError:
-    return try_read_song( path, "latin1" )
+import SongBeamer
+import ChurchTools
 
 def validate_string( value: str | None, min_length: int, max_length: int ) -> str | None:
   if not value:
@@ -65,7 +17,7 @@ def validate_string( value: str | None, min_length: int, max_length: int ) -> st
   elif len( value ) > max_length:
     return f"'{ value }' is longer than { max_length } characters."
 
-def check_song( song: Song ) -> bool:
+def check_song( song: SongBeamer.ImportedSong ) -> bool:
   result = True
 
   if error := validate_string( song.title, 2, 200 ):
@@ -87,32 +39,6 @@ def check_song( song: Song ) -> bool:
   
   return result
 
-def has_more_pages( result: dict ) -> bool:
-  if pagination := dict_path( result, "meta", "pagination" ):
-    return pagination.get( "current", 0 ) < pagination.get( "lastPage", 0 )
-  else:
-    return False
-  
-def collect_pages( session: requests.Session, template: requests.Request ) -> list:
-  result = session.send( session.prepare_request( template ) )
-  if result:
-    json = result.json()
-    pages: list = json[ "data" ]
-
-    while has_more_pages( json ):
-      template.params[ "page" ] = json[ "meta" ][ "pagination" ][ "current" ] + 1
-      result = session.send( session.prepare_request( template ) )
-      if result:
-        json = result.json()
-        pages.extend( json[ "data" ] )
-      else:
-        raise ConnectionError( f"Faile to load additional pages: { result.status_code } - { result.text }" )
-    
-    return pages
-  
-  else:
-    raise ConnectionError( f"Failed to load data: { result.status_code } - { result.text }" )
-
 class Ambiguous:
   pass
 
@@ -124,23 +50,15 @@ class AttachmentMode( enum.Enum ):
   def __str__( self ) -> str:
     return self.value
 
-class ChurchToolsSession( requests.Session ):
-
-  api_url: str
+class ChurchToolsSession( ChurchTools.Session ):
 
   source_id: int | None = None
   arrangement_name: str = "SongBeamer"
   song_category: int = 0
 
   def __init__( self, api_url: str, api_token: str ):
-    super().__init__()
+    super().__init__( api_url, api_token )
 
-    self.api_url = api_url
-
-    retries = requests.adapters.Retry( total=5, backoff_factor=1, allowed_methods=None, status_forcelist={ 429, } )
-    self.mount( self.api_url, requests.adapters.HTTPAdapter( max_retries=retries ) )
-
-    self.headers.update( { "Authorization": f"Login { api_token }" } )
     if result := self.get( f"{ self.api_url }/whoami" ):
       data = result.json()[ "data" ]
       print( f"Authenticated as { data[ "firstName" ] } { data[ "lastName" ] } (ID: { data[ "id" ] })." )
@@ -155,15 +73,14 @@ class ChurchToolsSession( requests.Session ):
     else:
       raise ConnectionError( f"Failed to obtain CSRF token: { result.status_code } - { result.text }" )
 
-  def match_arrangement( self, song: Song, arrangements: list[ dict ] ) -> dict | None:
+  def match_arrangement( self, song: SongBeamer.ImportedSong, arrangements: list[ dict ] ) -> dict | None:
     for arrangement in arrangements:
       if self.source_id is None or arrangement.get( "sourceId" ) == self.source_id:
         for file in arrangement.get( "files", [] ):
           if file.get( "name" ) == os.path.basename( song.file_name ):
             return arrangement
 
-  def match_song( self, song: Song, candidates: list[ dict ] ) -> dict | Ambiguous | None:
-
+  def match_song( self, song: SongBeamer.ImportedSong, candidates: list[ dict ] ) -> dict | Ambiguous | None:
     for s in candidates:
       if self.match_arrangement( song, s.get( "arrangements", [] ) ):
         return s
@@ -189,12 +106,12 @@ class ChurchToolsSession( requests.Session ):
     else:
       return None
     
-  def import_song( self, song: Song ) -> dict | None:
+  def import_song( self, song: SongBeamer.ImportedSong ) -> dict | None:
 
-    songs = collect_pages( self, requests.Request( "GET", self.api_url + "/songs", params={ "name": song.title } ) )
+    songs = self.collect( requests.Request( "GET", self.api_url + "/songs", params={ "name": song.title } ) )
     for s in songs:
       if "arrangements" not in s:
-        s[ "arrangements" ] = collect_pages( self, requests.Request( "GET", f"{ self.api_url }/songs/{ s[ "id" ] }/arrangements" ) )
+        s[ "arrangements" ] = self.collect( requests.Request( "GET", f"{ self.api_url }/songs/{ s[ "id" ] }/arrangements" ) )
 
     match self.match_song( song, songs ):
       case dict() as existing:
@@ -249,8 +166,7 @@ class ChurchToolsSession( requests.Session ):
       case Ambiguous():
         print( f"Could not match song '{ song.title }'." )
 
-  def import_arrangement( self, song: Song, ct_song: dict ) -> dict:
-
+  def import_arrangement( self, song: SongBeamer.ImportedSong, ct_song: dict ) -> dict:
     match self.match_arrangement( song, ct_song.get( "arrangements", [] ) ):
       case dict() as existing:
 
@@ -297,11 +213,10 @@ class ChurchToolsSession( requests.Session ):
         else:
           raise ConnectionError( f"Failed to create arrangement: { result.status_code } - { result.text }." )
 
-  def import_attachment( self, song: Song, arrangement: dict, mode: AttachmentMode = AttachmentMode.SKIP ):
-
+  def import_attachment( self, song: SongBeamer.ImportedSong, arrangement: dict, mode: AttachmentMode = AttachmentMode.SKIP ):
     if mode != AttachmentMode.ADD:
 
-      arrangement[ "files" ] = collect_pages( self, requests.Request( "GET", f"{ self.api_url }/files/song_arrangement/{ arrangement[ "id" ] }" ) )
+      arrangement[ "files" ] = self.collect( requests.Request( "GET", f"{ self.api_url }/files/song_arrangement/{ arrangement[ "id" ] }" ) )
     
       for file in arrangement.get( "files", [] ):
         if file.get( "name" ) == os.path.basename( song.file_name ):
@@ -334,11 +249,11 @@ class ChurchToolsSession( requests.Session ):
     if self.source_id is None:
       raise ValueError( "source_id must be set to delete imported songs." )
 
-    for song in collect_pages( self, requests.Request( "GET", self.api_url + "/songs", params={ "sourceId": self.source_id } ) ):
+    for song in self.collect( requests.Request( "GET", self.api_url + "/songs", params={ "sourceId": self.source_id } ) ):
 
       delete_song = True
 
-      for arrangement in collect_pages( self, requests.Request( "GET", f"{ self.api_url }/songs/{ song[ "id" ] }/arrangements" ) ):
+      for arrangement in self.collect( requests.Request( "GET", f"{ self.api_url }/songs/{ song[ "id" ] }/arrangements" ) ):
         if arrangement.get( "sourceId" ) == self.source_id:
           print( f"Deleting arrangement { arrangement[ "id" ] } of song { song[ "id" ] }." )
           if result := self.delete( f"{ self.api_url }/songs/{ song[ "id" ] }/arrangements/{ arrangement[ "id" ] }" ):
@@ -402,7 +317,7 @@ if __name__ == "__main__":
         session.source_id = arguments.source_id
 
         def do_import( path ):
-          if song := read_song( path ):
+          if song := SongBeamer.read_song( path ):
             if ct_song := session.import_song( song ):
               if ct_arrangement := session.import_arrangement( song, ct_song ):
                 session.import_attachment( song, ct_arrangement, mode=arguments.attachment_mode )
@@ -432,5 +347,5 @@ if __name__ == "__main__":
     case "check":
       for file in os.scandir( arguments.source_directory ):
         if file.is_file() and file.name.endswith( ".sng" ):
-          if song := read_song( file.path ):
+          if song := SongBeamer.read_song( file.path ):
             check_song( song )
