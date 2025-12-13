@@ -1,5 +1,5 @@
 import requests
-import requests.adapters
+import getpass
 
 def has_more_pages( result: dict ) -> bool:
   if pagination := result.get( "meta", {} ).get( "pagination" ):
@@ -7,19 +7,37 @@ def has_more_pages( result: dict ) -> bool:
   else:
     return False
   
+def join_path( base: str, *segments: str, separator: str = "/" ) -> str:
+  for s in segments:
+    if not base.endswith( separator ) or not s.startswith( separator ):
+      base += separator
+    base += s
+  return base
+  
 class Session( requests.Session ):
 
   default_page_size: int | None = None
 
-  def __init__( self, api_url: str, api_token: str ) -> None:
+  def __init__( self, api_url: str, api_token: str | None = None ) -> None:
     super().__init__()
 
     self.api_url: str = api_url
 
-    self.headers.update( { "Authorization": f"Login { api_token }" } )
+    if api_token:
+      self.headers.update( { "Authorization": f"Login { api_token }" } )
 
-    retries = requests.adapters.Retry( total=5, backoff_factor=1, allowed_methods=None, status_forcelist={ 429, } )
-    self.mount( self.api_url, requests.adapters.HTTPAdapter( max_retries=retries ) )
+  def endpoint_url( self, endpoint: str ) -> str:
+    return join_path( self.api_url, endpoint )
+
+  def login( self, username: str, password: str | None = None ):
+
+    if not password:
+      password = getpass.getpass( f"ChurchTools password for user '{ username }': " )
+    
+    if result := self.post( self.endpoint_url( "login" ), data={ "password": password, "username": username } ):
+      pass
+    else:
+      raise ConnectionError( f"Failed to login to '{ self.api_url }' as user '{ username }': { result.status_code } - { result.text }" )
 
   def collect( self, template: requests.Request, *, page_size: int | None = None, start_page: int = 0 ) -> list:
 
