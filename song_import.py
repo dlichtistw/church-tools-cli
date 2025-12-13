@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import datetime
-import requests
+import requests, requests.adapters
 import os
 import enum
 
@@ -56,16 +56,22 @@ class ChurchToolsSession( ChurchTools.Session ):
   arrangement_name: str = "SongBeamer"
   song_category: int = 0
 
-  def __init__( self, api_url: str, api_token: str ):
+  def __init__( self, api_url: str, *, api_token: str | None, user: str | None ):
     super().__init__( api_url, api_token )
 
-    if result := self.get( f"{ self.api_url }/whoami" ):
+    if user:
+      self.login( user )
+
+    retries = requests.adapters.Retry( total=5, backoff_factor=1, allowed_methods=None, status_forcelist={ 429, } )
+    self.mount( self.api_url, requests.adapters.HTTPAdapter( max_retries=retries ) )
+
+    if result := self.get( self.endpoint_url( "whoami" ) ):
       data = result.json()[ "data" ]
       print( f"Authenticated as { data[ "firstName" ] } { data[ "lastName" ] } (ID: { data[ "id" ] })." )
     else:
       raise ConnectionError( f"Failed to authenticate: { result.status_code } - { result.text }." )
 
-    if result := self.get( f"{ self.api_url }/csrftoken" ):
+    if result := self.get( self.endpoint_url( "csrftoken" ) ):
       if token := result.json().get( "data" ):
         self.headers.update( { "CSRF-Token": token } )
       else:
@@ -287,7 +293,9 @@ if __name__ == "__main__":
 
   parser = argparse.ArgumentParser( description="Manage a ChurchTools song database." )
   parser.add_argument( "-u", "--api-url", type=str, help="ChurchTools API URL", required=( "api_url" not in defaults ), metavar="URL" )
-  parser.add_argument( "-t", "--api-token", type=str, help="ChurchTools API token", required=( "api_token" not in defaults ), metavar="TOKEN" )
+  auth_group = parser.add_mutually_exclusive_group( required=( "api_token" not in defaults and "user" not in defaults ) )
+  auth_group.add_argument( "-t", "--api-token", type=str, help="ChurchTools API token", metavar="TOKEN" )
+  auth_group.add_argument( "--user", type=str, help="ChurchTools User Name", metavar="USER" )
   parser.set_defaults( **defaults )
 
   sub_parsers = parser.add_subparsers( dest="command" )
@@ -312,7 +320,7 @@ if __name__ == "__main__":
   match arguments.command:
 
     case "import":
-      with ChurchToolsSession( arguments.api_url, arguments.api_token ) as session:
+      with ChurchToolsSession( arguments.api_url, api_token=arguments.api_token, user=arguments.user ) as session:
 
         session.source_id = arguments.source_id
 
@@ -332,12 +340,12 @@ if __name__ == "__main__":
             do_import( source )
 
     case "delete":
-      with ChurchToolsSession( arguments.api_url, arguments.api_token ) as session:
+      with ChurchToolsSession( arguments.api_url, api_token=arguments.api_token, user=arguments.user ) as session:
         session.source_id = arguments.source_id
         session.delete_imported_songs()
     
     case "test":
-      with ChurchToolsSession( arguments.api_url, arguments.api_token ) as session:
+      with ChurchToolsSession( arguments.api_url, api_token=arguments.api_token, user=arguments.user ) as session:
         if result := session.get( f"{ session.api_url }/info" ):
           info = result.json()
           print( f"Connected to ChurchTools { info[ "version" ] } of '{ info[ "siteName" ] }'." )
