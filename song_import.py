@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import datetime
+import types
 import requests, requests.adapters
 import os
 import enum
@@ -8,36 +9,62 @@ import enum
 import SongBeamer
 import ChurchTools
 
-def validate_string( value: str | None, min_length: int, max_length: int ) -> str | None:
-  if not value:
-    if min_length > 0:
-      return f"Invalid string."
-  elif len( value ) < min_length:
-    return f"'{ value }' is shorter than { min_length } characters."
-  elif len( value ) > max_length:
-    return f"'{ value }' is longer than { max_length } characters."
+ccli_schema = { "maxLength": 50, "type": ( str, types.NoneType ) }
+name_schema = { "minLength": 2, "maxLength": 200, "type": ( int, ) }
+copyright_schema = { "maxLength": 400, "type": ( str, types.NoneType ) }
+author_schema = { "maxLength": 300, "type": ( str, types.NoneType ) }
+key_schema = {
+  "anyOf": [
+    {
+      "enum": [ "A", "Ab", "Am", "B", "Bb", "Bbm", "Bm", "C", "C#m", "Cm", "D", "D#m", "Db", "Dm", "E", "Eb", "Ebm", "Em", "F", "F#", "F#m", "Fm", "G", "G#m", "Gb", "Gm" ],
+      "type": ( str, )
+    },
+    { "type": ( types.NoneType, ), }
+  ]
+}
 
-def check_song( song: SongBeamer.ImportedSong ) -> bool:
-  result = True
 
-  if error := validate_string( song.title, 2, 200 ):
-    print( f"Song '{ song.file_name }' has an invalid title: { error }" )
-    result = False
+def sanitize( value, schema: dict ):
 
-  if error := validate_string( song.author, 0, 300 ):
-    print( f"Song '{ song.file_name }' has an invalid author: { error }" )
-    result = False
+  if any_of := schema.get( "anyOf", [] ):
+    for alternative in any_of:
+      try:
+        return sanitize( value, alternative )
+      except ValueError:
+        pass
+    else:
+      raise ValueError( f"Value '{ value }' does not match any of the allowed schemas." )
   
-  if error := validate_string( song.copyright, 0, 400 ):
-    print( f"Song '{ song.file_name }' has an invalid copyright: { error }" )
-    result = False
-
-  if song.ccli:
-    if error := validate_string( str( song.ccli ), 0, 50 ):
-      print( f"Song '{ song.file_name }' has an invalid CCLI number: { error }" )
-      result = False
+  if types := schema.get( "type", () ):
+    if not isinstance( value, types ):
+      for t in types:
+        try:
+          value = t( value )
+        except:
+          pass
+        break
+      else:
+        raise ValueError( f"Value '{ value }' does not match any of the allowed types." )
   
-  return result
+  if isinstance( value, str ):
+    if lower := schema.get( "minLength" ):
+      if len( value ) < lower:
+        raise ValueError( f"Value '{ value }' is too short." )
+    if upper := schema.get( "maxLength" ):
+      if len( value ) > upper:
+        value = value[ :upper-1 ] + "…"
+    if enums := schema.get( "enum", [] ):
+      if value not in enums:
+        raise ValueError( f"Value '{ value } is not in the list of allowed values." )
+  
+  return value
+
+def sanitize_song( song: SongBeamer.song.Song ):
+  song.author = sanitize( song.author, author_schema )
+  song.title = sanitize( song.title, name_schema )
+  song.ccli = sanitize( song.ccli, ccli_schema )
+  song.copyright = sanitize( song.copyright, copyright_schema )
+  song.key = sanitize( song.key, key_schema )
 
 class Ambiguous:
   pass
@@ -312,9 +339,6 @@ if __name__ == "__main__":
 
   test_parser = sub_parsers.add_parser( "test", help="Test the ChurchTools connection." )
 
-  check_parser = sub_parsers.add_parser( "check", help="Check .sng files for validity." )
-  check_parser.add_argument( "source_directory", type=str, default=".", nargs="?" )
-
   arguments = parser.parse_args()
 
   match arguments.command:
@@ -351,9 +375,3 @@ if __name__ == "__main__":
           print( f"Connected to ChurchTools { info[ "version" ] } of '{ info[ "siteName" ] }'." )
         else:
           raise ConnectionError( f"Failed to get ChurchTools info: { result.status_code } - { result.text }" )
-        
-    case "check":
-      for file in os.scandir( arguments.source_directory ):
-        if file.is_file() and file.name.endswith( ".sng" ):
-          if song := SongBeamer.read_song( file.path ):
-            check_song( song )
