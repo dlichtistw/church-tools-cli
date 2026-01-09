@@ -8,56 +8,21 @@ import enum
 
 import SongBeamer
 import ChurchTools
+from schema import sanitize
 
-ccli_schema = { "maxLength": 50, "type": ( str, types.NoneType ) }
-name_schema = { "minLength": 2, "maxLength": 200, "type": ( int, ) }
-copyright_schema = { "maxLength": 400, "type": ( str, types.NoneType ) }
-author_schema = { "maxLength": 300, "type": ( str, types.NoneType ) }
+ccli_schema = { "maxLength": 50, "type": ( "string",  "null" ) }
+name_schema = { "minLength": 2, "maxLength": 200, "type": "string" }
+copyright_schema = { "maxLength": 400, "type": ( "string",  "null" ) }
+author_schema = { "maxLength": 300, "type": ( "string",  "null" ) }
 key_schema = {
   "anyOf": [
     {
       "enum": [ "A", "Ab", "Am", "B", "Bb", "Bbm", "Bm", "C", "C#m", "Cm", "D", "D#m", "Db", "Dm", "E", "Eb", "Ebm", "Em", "F", "F#", "F#m", "Fm", "G", "G#m", "Gb", "Gm" ],
-      "type": ( str, )
+      "type": "string"
     },
-    { "type": ( types.NoneType, ), }
+    { "type": "null", }
   ]
 }
-
-
-def sanitize( value, schema: dict ):
-
-  if any_of := schema.get( "anyOf", [] ):
-    for alternative in any_of:
-      try:
-        return sanitize( value, alternative )
-      except ValueError:
-        pass
-    else:
-      raise ValueError( f"Value '{ value }' does not match any of the allowed schemas." )
-  
-  if types := schema.get( "type", () ):
-    if not isinstance( value, types ):
-      for t in types:
-        try:
-          value = t( value )
-        except:
-          pass
-        break
-      else:
-        raise ValueError( f"Value '{ value }' does not match any of the allowed types." )
-  
-  if isinstance( value, str ):
-    if lower := schema.get( "minLength" ):
-      if len( value ) < lower:
-        raise ValueError( f"Value '{ value }' is too short." )
-    if upper := schema.get( "maxLength" ):
-      if len( value ) > upper:
-        value = value[ :upper-1 ] + "…"
-    if enums := schema.get( "enum", [] ):
-      if value not in enums:
-        raise ValueError( f"Value '{ value } is not in the list of allowed values." )
-  
-  return value
 
 def sanitize_song( song: SongBeamer.song.Song ):
   song.author = sanitize( song.author, author_schema )
