@@ -29,20 +29,20 @@ def sanitize( value, schema: dict ):
         try:
           value = t( value )
         except:
-          pass
+          continue
         break
       else:
         raise ValueError( f"Value '{ value }' does not match any of the allowed types." )
   
   if isinstance( value, str ):
+    if enums := schema.get( "enum", [] ):
+      if value not in enums:
+        raise ValueError( f"Value '{ value } is not in the list of allowed values." )
     if lower := schema.get( "minLength" ):
       if len( value ) < lower:
         raise ValueError( f"Value '{ value }' is too short." )
     if upper := schema.get( "maxLength" ):
       if len( value ) > upper:
         value = value[ :upper-1 ] + "…"
-    if enums := schema.get( "enum", [] ):
-      if value not in enums:
-        raise ValueError( f"Value '{ value } is not in the list of allowed values." )
   
   return value
