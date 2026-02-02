@@ -9,7 +9,7 @@ def has_more_pages( result: dict ) -> bool:
   
 def join_path( base: str, *segments: str, separator: str = "/" ) -> str:
   for s in segments:
-    if not base.endswith( separator ) or not s.startswith( separator ):
+    if not base.endswith( separator ) and not s.startswith( separator ):
       base += separator
     base += s
   return base
@@ -39,7 +39,7 @@ class Session( requests.Session ):
     else:
       raise ConnectionError( f"Failed to login to '{ self.api_url }' as user '{ username }': { result.status_code } - { result.text }" )
 
-  def collect( self, template: requests.Request, *, page_size: int | None = None, start_page: int = 0 ) -> list:
+  def collect( self, template: requests.Request, *, page_size: int | None = None, start_page: int = 1 ) -> list:
 
     template.params[ "page" ] = start_page
     if limit := page_size or self.default_page_size:
