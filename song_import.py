@@ -116,6 +116,8 @@ class ChurchToolsSession( ChurchTools.Session ):
 
         update = { k: v for k, v in existing.items() if k in [ "name", "author", "ccli", "copyright" ] }
         update[ "categoryId" ] = existing[ "category" ][ "id" ]
+
+        sanitize_song( song )
       
         needs_update = False
 
