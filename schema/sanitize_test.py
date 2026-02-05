@@ -3,6 +3,7 @@ from .sanitize import python_types, sanitize
 import types
 import pytest
 
+
 class TestPythonTypes:
 
   def test_empty( self ):
@@ -19,6 +20,7 @@ class TestPythonTypes:
   def test_invalid( self ):
     with pytest.raises( KeyError ):
       python_types( "invalid type" )
+
 
 class TestSanitize:
 

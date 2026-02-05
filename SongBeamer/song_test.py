@@ -1,8 +1,7 @@
-import pytest
 import unittest.mock
-import io
 
 from .song import Song, ImportedSong, try_read_song, read_song
+
 
 class TestSong:
 
@@ -19,6 +18,7 @@ class TestSong:
     assert song.ccli is None
     assert song.categories == []
 
+
 class TestImportedSong:
 
   def test_init( self ):
@@ -30,6 +30,7 @@ class TestImportedSong:
 
     assert song.title == title
     assert song.file_name == file_name
+
 
 class TestTryReadSong:
 
@@ -67,7 +68,7 @@ That saved a wretch like me!"""
       assert song.ccli == ccli
       assert song.categories == categories
       assert song.file_name == path
-  
+
   def test_missing_title( self ):
 
     key = "C"
@@ -93,13 +94,14 @@ All our sins and griefs to bear!"""
 
       assert song is None
 
+
 class TestReadSong:
 
   def test_utf8( self ):
 
     title = "Test Song"
     path = "test_song.sng"
-    
+
     with unittest.mock.patch( "SongBeamer.song.try_read_song" ) as mock:
       mock.return_value = ImportedSong( title, path )
 
@@ -114,7 +116,7 @@ class TestReadSong:
 
     title = "Test Song"
     path = "test_song.sng"
-    
+
     with unittest.mock.patch( "SongBeamer.song.try_read_song" ) as mock:
       mock.side_effect = ( UnicodeDecodeError( "", b"", 0, 0, "no reason" ), ImportedSong( "Test Song", path ), )
 

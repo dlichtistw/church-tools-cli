@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 
 import datetime
-import types
-import requests, requests.adapters
+import requests
+import requests.adapters
 import os
 import enum
 
@@ -24,6 +24,7 @@ key_schema = {
   ]
 }
 
+
 def sanitize_song( song: SongBeamer.song.Song ):
   song.author = sanitize( song.author, author_schema )
   song.title = sanitize( song.title, name_schema )
@@ -31,8 +32,10 @@ def sanitize_song( song: SongBeamer.song.Song ):
   song.copyright = sanitize( song.copyright, copyright_schema )
   song.key = sanitize( song.key, key_schema )
 
+
 class Ambiguous:
   pass
+
 
 class AttachmentMode( enum.Enum ):
   ADD = "add"
@@ -41,6 +44,7 @@ class AttachmentMode( enum.Enum ):
 
   def __str__( self ) -> str:
     return self.value
+
 
 class ChurchToolsSession( ChurchTools.Session ):
 
@@ -103,7 +107,7 @@ class ChurchToolsSession( ChurchTools.Session ):
       return Ambiguous()
     else:
       return None
-    
+
   def import_song( self, song: SongBeamer.ImportedSong ) -> dict | None:
 
     songs = self.collect( requests.Request( "GET", self.api_url + "/songs", params={ "name": song.title } ) )
@@ -118,13 +122,13 @@ class ChurchToolsSession( ChurchTools.Session ):
         update[ "categoryId" ] = existing[ "category" ][ "id" ]
 
         sanitize_song( song )
-      
+
         needs_update = False
 
         if song.ccli and song.ccli != update.get( "ccli" ):
           update[ "ccli" ] = song.ccli
           needs_update = True
-    
+
         if song.author and song.author != update.get( "author" ):
           update[ "author" ] = song.author
           needs_update = True
@@ -132,7 +136,7 @@ class ChurchToolsSession( ChurchTools.Session ):
         if song.copyright and song.copyright != update.get( "copyright" ):
           update[ "copyright" ] = song.copyright
           needs_update = True
-        
+
         if needs_update:
           print( f"Updating existing song: { existing[ "id" ] } - { existing[ "name" ] }" )
           if result := self.put( f"{ self.api_url }/songs/{ existing[ "id" ] }", json=update ):
@@ -141,9 +145,9 @@ class ChurchToolsSession( ChurchTools.Session ):
             raise ConnectionError( f"Failed to update song { existing[ "id" ] }: { result.status_code } - { result.text }" )
         else:
           print( f"Keep existing song: { existing[ "id" ] } - { existing[ "name" ] }" )
-          
+
         return existing
-    
+
       case None:
         print( f"Creating new song: { song.title }" )
 
@@ -151,18 +155,18 @@ class ChurchToolsSession( ChurchTools.Session ):
 
         if song.ccli:
           insert[ "ccli" ] = song.ccli
-        
+
         if song.author:
           insert[ "author" ] = song.author
 
         if song.copyright:
           insert[ "copyright" ] = song.copyright
-        
+
         if result := self.post( self.api_url + "/songs", json=insert ):
           return result.json()[ "data" ]
         else:
           raise ConnectionError( f"Faile to create song: { result.status_code } - { result.text }" )
-        
+
       case Ambiguous():
         print( f"Could not match song '{ song.title }'." )
 
@@ -191,9 +195,9 @@ class ChurchToolsSession( ChurchTools.Session ):
             raise ConnectionError( f"Failed to update arrangement { existing[ "id" ] } of song { ct_song[ "id" ] }: { result.status_code } - { result.text }" )
         else:
           print( f"Keeping existing arrangement { existing[ "id" ] } for song id { ct_song[ "id" ] }." )
-      
+
         return existing
-      
+
       case None:
         print( f"Creating new arrangement for song id { ct_song[ "id" ] }." )
 
@@ -217,7 +221,7 @@ class ChurchToolsSession( ChurchTools.Session ):
     if mode != AttachmentMode.ADD:
 
       arrangement[ "files" ] = self.collect( requests.Request( "GET", f"{ self.api_url }/files/song_arrangement/{ arrangement[ "id" ] }" ) )
-    
+
       for file in arrangement.get( "files", [] ):
         if file.get( "name" ) == os.path.basename( song.file_name ):
           if mode == AttachmentMode.SKIP:
@@ -229,7 +233,7 @@ class ChurchToolsSession( ChurchTools.Session ):
               pass
             else:
               raise ConnectionError( f"Failed to delete attachment { file[ "id" ] }: { result.status_code } - { result.text }" )
-      
+
     print( f"Uploading attachment '{ os.path.basename( song.file_name ) }' for arrangement { arrangement[ "id" ] }." )
     with open( song.file_name, "rb" ) as file:
       files = { "files[]": ( os.path.basename( song.file_name ), file ) }
@@ -237,14 +241,13 @@ class ChurchToolsSession( ChurchTools.Session ):
         return
       else:
         raise ConnectionError( f"Failed to upload attachment for arrangement { arrangement[ "id" ] }: { result.status_code } - { result.text }" )
-    
-    
+
   def set_default_arrangement( self, song_id: int, arrangement_id: int ):
     if result := self.patch( f"{ self.api_url }/songs/{ song_id }/arrangements/{ arrangement_id }/default" ):
       return
     else:
       raise ConnectionError( f"Failed to set arrangement { arrangement_id } as default for song { song_id }: { result.status_code } - { result.text }" )
-    
+
   def delete_imported_songs( self ):
     if self.source_id is None:
       raise ValueError( "source_id must be set to delete imported songs." )
@@ -262,13 +265,14 @@ class ChurchToolsSession( ChurchTools.Session ):
             raise ConnectionError( f"Failed to delete arrangement { arrangement[ "id" ] } of song { song[ "id" ] }: { result.status_code } - { result.text }" )
         else:
           delete_song = False
-        
+
       if delete_song:
         print( f"Deleting song { song[ "id" ] } - { song[ "name" ] }." )
         if result := self.delete( f"{ self.api_url }/songs/{ song[ "id" ] }" ):
           pass
         else:
           raise ConnectionError( f"Failed to delete song { song[ "id" ] }: { result.status_code } - { result.text }" )
+
 
 if __name__ == "__main__":
 
@@ -334,7 +338,7 @@ if __name__ == "__main__":
       with ChurchToolsSession( arguments.api_url, api_token=arguments.api_token, user=arguments.user ) as session:
         session.source_id = arguments.source_id
         session.delete_imported_songs()
-    
+
     case "test":
       with ChurchToolsSession( arguments.api_url, api_token=arguments.api_token, user=arguments.user ) as session:
         if result := session.get( f"{ session.api_url }/info" ):

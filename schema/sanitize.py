@@ -1,4 +1,5 @@
-import types, typing
+import types
+import typing
 
 type_map: dict[ str, type ] = {
   "string": str,
@@ -6,11 +7,13 @@ type_map: dict[ str, type ] = {
   "integer": int,
 }
 
+
 def python_types( type_names: str | typing.Iterable[ str ] ) -> tuple[ type, ... ]:
   if isinstance( type_names, str ):
     return python_types( ( type_names, ) )
   else:
     return tuple( type_map[ t ] for t in type_names )
+
 
 def sanitize( value, schema: dict ):
 
@@ -22,7 +25,7 @@ def sanitize( value, schema: dict ):
         pass
     else:
       raise ValueError( f"Value '{ value }' does not match any of the allowed schemas." )
-  
+
   if types := python_types( schema.get( "type", [] ) ):
     if not isinstance( value, types ):
       for t in types:
@@ -33,7 +36,7 @@ def sanitize( value, schema: dict ):
         break
       else:
         raise ValueError( f"Value '{ value }' does not match any of the allowed types." )
-  
+
   if isinstance( value, str ):
     if enums := schema.get( "enum", [] ):
       if value not in enums:
@@ -44,5 +47,5 @@ def sanitize( value, schema: dict ):
     if upper := schema.get( "maxLength" ):
       if len( value ) > upper:
         value = value[ :upper-1 ] + "…"
-  
+
   return value

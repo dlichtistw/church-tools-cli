@@ -1,5 +1,6 @@
 from .session import join_path, has_more_pages, Session
 
+
 class TestHasMorePages:
 
   def test_no_pagination( self ):
@@ -18,6 +19,7 @@ class TestHasMorePages:
     assert has_more_pages( { "meta": { "pagination": { "current": 1, "lastPage": 2 } } } )
     assert has_more_pages( { "meta": { "pagination": { "lastPage": 3 } } } )
 
+
 class TestJoinPath:
 
   def test_base_only( self ):
@@ -30,7 +32,7 @@ class TestJoinPath:
     assert join_path( base, *segments ) == "/".join( [ base, *segments ] )
 
   def test_separator_elision( self ):
-    base ="protocol://host/path/"
+    base = "protocol://host/path/"
     segments = [ "to/", "/some", "/resource" ]
     assert join_path( base, *segments ) == "".join( [ base, *segments ] )
 

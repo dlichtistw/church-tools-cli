@@ -1,0 +1,13 @@
+[flake8]
+extend-ignore =
+  # Allow smaller indentations.
+  E111,
+  # Ignore whitespace after and before parentheses.
+  E201,
+  E202,
+
+max-line-length = 180
+
+per-file-ignores =
+  # Allow unused imports in __init__.py files.
+  __init__.py: F401
